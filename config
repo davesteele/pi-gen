@@ -1,4 +1,4 @@
 
 IMG_NAME="Comitup"
-APT_PROXY=http://localhost:3142/
+APT_PROXY=http://192.168.200.28:3142/
 
