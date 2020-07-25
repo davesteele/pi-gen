@@ -5,6 +5,7 @@ type=ethernet
 interface-name=eth0
 permissions=
 autoconnect-priority=2
+auth-retries=1
 
 [ethernet]
 mac-address-blacklist=
