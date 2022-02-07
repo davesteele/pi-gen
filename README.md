@@ -2,7 +2,7 @@
 
 Tool used to create Raspberry Pi OS images. (Previously known as Raspbian).
 
-_This fork creates the [Comitup](https://davesteele.github.io/comitup/) spin_
+_This fork creates the [Comitup](https://davesteele.github.io/comitup/) x64 spin_
 
 
 ## Dependencies
@@ -17,7 +17,7 @@ To install the required dependencies for `pi-gen` you should run:
 ```bash
 apt-get install coreutils quilt parted qemu-user-static debootstrap zerofree zip \
 dosfstools libarchive-tools libcap2-bin grep rsync xz-utils file git curl bc \
-qemu-utils kpartx
+qemu-utils kpartx gpg
 ```
 
 The file `depends` contains a list of tools needed.  The format of this
