@@ -1,0 +1,257 @@
+This contains the modifications to make the branch build a Comitup image.
+
+Also need to delete stage5, and any EXPORT_NOOBS files.
+
+
+diff --git a/.gitignore b/.gitignore
+index a6883c2..3ae85aa 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,6 +1,5 @@
+ deploy/*
+ work/*
+-config
+ postrun.sh
+ SKIP
+ SKIP_IMAGES
+diff --git a/README.md b/README.md
+index 08b2c13..b1d6839 100644
+--- a/README.md
++++ b/README.md
+@@ -2,6 +2,8 @@
+ 
+ Tool used to create Raspberry Pi OS images. (Previously known as Raspbian).
+ 
++_This fork creates the [Comitup](https://davesteele.github.io/comitup/) spin_
++
+ 
+ ## Dependencies
+ 
+diff --git a/cleanupdev.sh b/cleanupdev.sh
+new file mode 100755
+index 0000000..1c215c4
+--- /dev/null
++++ b/cleanupdev.sh
+@@ -0,0 +1,4 @@
++#!/bin/bash
++
++for mnt in `df -a | grep pi-gen/work | awk '{print $6}' | sort -r`; do umount $mnt ; done
++
+diff --git a/config b/config
+new file mode 100644
+index 0000000..8498e81
+--- /dev/null
++++ b/config
+@@ -0,0 +1,4 @@
++
++IMG_NAME="Comitup"
++APT_PROXY=http://192.168.200.31:3142/
++
+diff --git a/nukebuild.sh b/nukebuild.sh
+new file mode 100755
+index 0000000..8440647
+--- /dev/null
++++ b/nukebuild.sh
+@@ -0,0 +1,7 @@
++#!/bin/bash
++
++while `/bin/true`; do \
++    ./cleanup; \
++    rm -rf work/Comitup; \
++    ./build.sh && exit 0; \
++done
+diff --git a/scripts/common b/scripts/common
+index e476f0f..b1912fd 100644
+--- a/scripts/common
++++ b/scripts/common
+@@ -95,6 +95,6 @@ on_chroot() {
+ export -f on_chroot
+ 
+ update_issue() {
+-	echo -e "Raspberry Pi reference ${IMG_DATE}\nGenerated using ${PI_GEN}, ${PI_GEN_REPO}, ${GIT_HASH}, ${1}" > "${ROOTFS_DIR}/etc/rpi-issue"
++	echo -e "Raspberry Pi reference ${IMG_DATE}\nGenerated using the Comitup pi-gen fork, https://github.com/davesteele/pi-gen, ${GIT_HASH}, ${1}" > "${ROOTFS_DIR}/etc/rpi-issue"
+ }
+ export -f update_issue
+diff --git a/stage2/04-comitup/00-run.sh b/stage2/04-comitup/00-run.sh
+new file mode 100755
+index 0000000..edf21de
+--- /dev/null
++++ b/stage2/04-comitup/00-run.sh
+@@ -0,0 +1,24 @@
++#!/bin/bash -e
++
++set -e
++
++touch ${ROOTFS_DIR}/boot/ssh
++
++rm -f ${ROOTFS_DIR}/etc/network/interfaces
++install -m 644 files/interfaces ${ROOTFS_DIR}/etc/network/
++
++APT_DEB=$(curl https://davesteele.github.io/comitup/pkgs.json 2>&1 | grep apt-source_ | tail -1 | tr -d " ,\"")
++wget -P ${ROOTFS_DIR}/tmp https://davesteele.github.io/comitup/deb/${APT_DEB}
++
++on_chroot << EOF
++dpkg -i --force-all /tmp/davesteele-comitup-apt-source_*.deb
++apt-get -f install
++apt-get update
++systemctl mask dnsmasq.service
++systemctl mask systemd-resolved.service
++systemctl mask dhcpd.service
++systemctl mask dhcpcd.service
++systemctl mask wpa-supplicant.service
++EOF
++
++rm ${ROOTFS_DIR}/tmp/${APT_DEB}
+diff --git a/stage2/04-comitup/01-packages b/stage2/04-comitup/01-packages
+new file mode 100644
+index 0000000..6b95492
+--- /dev/null
++++ b/stage2/04-comitup/01-packages
+@@ -0,0 +1,4 @@
++comitup
++comitup-watch
++davesteele-comitup-apt-source
++vim
+diff --git a/stage2/04-comitup/02-run.sh b/stage2/04-comitup/02-run.sh
+new file mode 100755
+index 0000000..433e20b
+--- /dev/null
++++ b/stage2/04-comitup/02-run.sh
+@@ -0,0 +1,13 @@
++#!/bin/bash
++
++set -e
++
++for conn in dhcp static; do
++    install -m 600 files/${conn}.nmconnection ${ROOTFS_DIR}/etc/NetworkManager/system-connections/
++done
++
++install -m 755 files/set_comitup_hostname_once "${ROOTFS_DIR}/etc/init.d/"
++
++on_chroot <<EOF
++systemctl enable set_comitup_hostname_once
++EOF
+diff --git a/stage2/04-comitup/files/dhcp.nmconnection b/stage2/04-comitup/files/dhcp.nmconnection
+new file mode 100644
+index 0000000..065d853
+--- /dev/null
++++ b/stage2/04-comitup/files/dhcp.nmconnection
+@@ -0,0 +1,22 @@
++[connection]
++id=dhcp
++uuid=7c7e0483-1532-4a7e-87aa-8247db11b31f
++type=ethernet
++interface-name=eth0
++permissions=
++autoconnect-priority=2
++auth-retries=1
++autoconnect-retries=1
++
++[ethernet]
++mac-address-blacklist=
++
++[ipv4]
++dns-search=
++method=auto
++dhcp-timeout=10
++
++[ipv6]
++addr-gen-mode=stable-privacy
++dns-search=
++method=auto
+diff --git a/stage2/04-comitup/files/interfaces b/stage2/04-comitup/files/interfaces
+new file mode 100644
+index 0000000..9ee186d
+--- /dev/null
++++ b/stage2/04-comitup/files/interfaces
+@@ -0,0 +1,17 @@
++# interfaces(5) file used by ifup(8) and ifdown(8)
++
++# Modified for Comitup, which hands over interface responsibility
++# to NetworkManager.
++
++# This has been modified for use with comitup(8). wireless
++# is handled by NetworkManager, with support for dhcp and non-dhcp
++# networks.
++
++# Please note that this file is written to be used with dhcpcd
++# For static IP, consult /etc/dhcpcd.conf and 'man dhcpcd.conf'
++
++# Include files from /etc/network/interfaces.d:
++# source-directory /etc/network/interfaces.d
++#
++# auto lo
++# iface lo inet loopback
+diff --git a/stage2/04-comitup/files/set_comitup_hostname_once b/stage2/04-comitup/files/set_comitup_hostname_once
+new file mode 100755
+index 0000000..edff313
+--- /dev/null
++++ b/stage2/04-comitup/files/set_comitup_hostname_once
+@@ -0,0 +1,39 @@
++#!/bin/sh
++
++### BEGIN INIT INFO
++# Provides:          set_comitup_hostname_once
++# Required-Start:    comitup
++# Required-Stop:
++# Default-Start: 2 3 4 5
++# Default-Stop: 0 1 6
++# Short-Description: Rename hostname per Comitup Hotspot AP name
++# Description:
++#  This service sets the system hostname to the name that the Comitup
++#  service uses for it's hotspot AP name, then deletes itself.
++### END INIT INFO
++
++. /lib/lsb/init-functions
++
++case "$1" in
++  start)
++    log_daemon_msg "Starting set_comitup_hostname_once"
++
++    APNAME=$(comitup -i | grep apname: | awk '{print $2}')
++    
++    if [ ! -z $APNAME ] ; then
++      echo "Set hostname to $APNAME"
++      echo $APNAME > /etc/hostname
++      echo "127.0.0.1\t$APNAME" >/etc/hosts
++      hostname $APNAME
++
++      update-rc.d set_comitup_hostname_once remove &&
++      rm /etc/init.d/set_comitup_hostname_once &&
++      log_end_msg $?
++    fi
++
++    ;;
++  *)
++    echo "Usage: $0 start" >&2
++    exit 3
++    ;;
++esac
+diff --git a/stage2/04-comitup/files/static.nmconnection b/stage2/04-comitup/files/static.nmconnection
+new file mode 100644
+index 0000000..cd0caec
+--- /dev/null
++++ b/stage2/04-comitup/files/static.nmconnection
+@@ -0,0 +1,22 @@
++[connection]
++id=static
++uuid=6f7f1894-d1ad-42b1-bc28-f46d6fe2e8e5
++type=ethernet
++interface-name=eth0
++permissions=
++autoconnect-priority=1
++
++[ethernet]
++mac-address-blacklist=
++
++[ipv4]
++address1=10.0.0.2/24
++dns=8.8.8.8;
++dns-search=
++may-fail=false
++method=manual
++
++[ipv6]
++addr-gen-mode=stable-privacy
++dns-search=
++method=ignore
