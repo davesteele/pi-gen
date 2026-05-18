@@ -1,5 +1,5 @@
 
-IMG_NAME="Comitup32"
+IMG_NAME="Comitup64"
 APT_PROXY=http://localhost:3142/
 
 FIRST_USER_NAME=comitup
